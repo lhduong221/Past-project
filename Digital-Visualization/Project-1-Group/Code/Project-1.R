@@ -8,7 +8,7 @@ library(ggthemes)
 
 ## DATA ----
 getwd()
-data <- read.csv("hotel_booking.csv")
+data <- read.csv("Data/hotel_booking.csv")
 
 summary(data)
 data <- data[!is.na(data$children),]               # remove children NAs
