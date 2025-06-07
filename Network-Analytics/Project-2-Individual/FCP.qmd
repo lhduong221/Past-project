@@ -1,0 +1,458 @@
+# Load modules
+```{python}
+# load modules
+import os
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+import matplotlib
+import numpy as np
+import networkx as nx
+from networkx.algorithms import bipartite as bp
+import pandas as pd
+from collections import Counter
+import json
+from IPython.display import Image
+from graph_tool.all import *
+from collections import defaultdict
+import random
+import community as community_louvain
+import plotly.express as px
+```
+
+# Set random seed
+```{python}
+# set random seed
+np.random.seed(42)
+random.seed(42)
+```
+
+# Add friend ship data
+```{python}
+# friend ship data
+fr = pd.read_csv('HR_edges.csv')
+fr.head()
+```
+
+# Add genre preferences data
+## Add json data
+```{python}
+# genre preferences
+with open('HR_genres.json', 'r') as f:
+    pr_json = json.load(f)
+```
+
+## Convert into pd data frame
+```{python}
+pr = pd.json_normalize(pr_json).T
+pr.rename({0: 'genres'}, axis=1, inplace=True)
+pr.head()
+```
+
+## Convert into long data frame
+```{python}
+pr = pr.explode('genres')
+pr.reset_index(inplace=True)
+pr.rename({'index': 'user_id'}, axis=1, inplace=True)
+pr.head()
+```
+
+
+# Facilitate incident matrix
+```{python}
+# user nodes and genre nodes from pr 
+user_nodes = pr["user_id"].unique()
+genre_nodes = pr["genres"].unique()
+```
+```{python}
+# add list of edges from pr
+pr_edges = list(zip(pr["user_id"],pr["genres"]))
+```
+```{python}
+# incident matrix as a nx graph
+inc_mat = nx.Graph()
+inc_mat.add_nodes_from(user_nodes, bipartite = 0)
+inc_mat.add_nodes_from(genre_nodes, bipartite = 1)
+inc_mat.add_edges_from(pr_edges)
+```
+```{python}
+# bipartite check
+is_bip = nx.is_bipartite(inc_mat)
+is_bip
+```
+
+# Genre-Genre network (weighted)
+```{python}
+# Genre-Genre network
+gg_w = bp.weighted_projected_graph(inc_mat, genre_nodes, ratio=True)
+```
+
+# Visualize Edge Weight distribution
+```{python}
+# Edge weight distribution
+edge_weights = [data['weight'] for u, v, data in gg_w.edges(data=True)]
+fig = plt.figure(figsize=(7,4))
+ax = fig.add_subplot()
+ax.set_xlabel("Edge weight")
+ax.set_ylabel("Count")
+ax.set_title("Edge Weight Distribution")
+ax.hist(edge_weights, bins = 46)
+# Save fig
+plt.savefig("Edge Weight Ditribution")
+```
+
+# Visualize gg_w Node Degree distribution and Average Edge Weight
+```{python}
+# Node degree 
+gg_w_degree = dict(gg_w.degree)
+# Total weight
+gg_w_weight = dict(gg_w.degree(weight = "weight"))
+# Avg weight
+gg_w_avg_weight = {node: (gg_w_weight[node]/gg_w_degree[node]) if gg_w_degree[node] > 0 else 0 for node in gg_w_degree.keys()}
+# Create a DataFrame to display the degrees and average weight for each node
+gg_w_degree_df = pd.DataFrame({
+    'Node': list(gg_w_degree.keys()),
+    'Node Degree': list(gg_w_degree.values()),
+    'Weighted Degree': list(gg_w_weight.values()),
+    'Average Edge Weight': list(gg_w_avg_weight.values())
+})
+```
+```{python}
+# top 10 and bottom 10 avg_edge_weight
+top_10_avg_weight = gg_w_degree_df.nlargest(10, "Average Edge Weight")
+bottom_10_avg_weight = gg_w_degree_df.nsmallest(10, "Average Edge Weight")
+```
+```{python}
+# Create a figure and axis
+fig, ax1 = plt.subplots(figsize=(14,9))
+
+# Sort the order 
+gg_w_degree_df_sorted = gg_w_degree_df.sort_values(by='Node Degree', ascending=False)
+
+# Bar chart for Simple Degree
+bars = ax1.bar(gg_w_degree_df_sorted['Node'], gg_w_degree_df_sorted['Node Degree'], color='lightblue', label='Node Degree')
+ax1.set_xlabel('Node', fontsize = 18)
+ax1.set_ylabel('Degree Count', color='blue', fontsize = 18)
+ax1.set_title('Node Degree and Average Edge Weight for Each Genre Node', fontsize = 18)
+ax1.tick_params(axis='y', labelcolor='blue')
+ax1.set_xticklabels(gg_w_degree_df_sorted["Node"], rotation = 90, fontsize = 10)
+
+# Points for Average Edge Weight
+ax2 = ax1.twinx()
+points = ax2.plot(gg_w_degree_df_sorted['Node'], gg_w_degree_df_sorted['Average Edge Weight'], color='red', marker='d', linestyle='None', label='Average Edge Weight')
+ax2.set_ylabel('Average Edge Weight', color='red', fontsize = 18)
+ax2.tick_params(axis='y', labelcolor='red')
+
+# Combine the handles and labels for both ax1 and ax2
+handles1, labels1 = ax1.get_legend_handles_labels()
+handles2, labels2 = ax2.get_legend_handles_labels()
+combined_handles = handles1 + handles2
+combined_labels = labels1 + labels2
+
+# Create legend box
+legend = fig.legend(
+    combined_handles, 
+    combined_labels, 
+    loc='upper right', 
+    bbox_to_anchor=(0.88, 0.88),
+    ncol=1, 
+    frameon=True, 
+    shadow=True, 
+    title="Legend", 
+    fancybox=True
+)
+# Customize the frame of the legend
+frame = legend.get_frame()
+frame.set_edgecolor('black')  
+frame.set_linewidth(1) 
+# Save fig
+plt.savefig("Node Degree and AEW for each node", bbox_inches='tight')
+# Show plot
+plt.show()
+```
+
+# Louvain community detection
+```{python}
+# Set resolution to 1.1 for more granular division
+partition = community_louvain.best_partition(gg_w, random_state=42, resolution=1.1)
+```
+## Extract community information
+```{python}
+# Get genres of each community
+community_genres = defaultdict(list)
+for genre, community_id in partition.items():
+    community_genres[community_id].append(genre)
+# Print out the genres in each community
+for community_id, genre in community_genres.items():
+    print(f"Community {community_id} has {len(genre)} genres: {genre}")
+```
+## Runs Louvain again on Community 3 
+```{python}
+# Extract list of Genres in Community 3
+comm_3 = community_genres.get(3, [])
+# Extract Graph of Community 3
+comm_3_g = gg_w.subgraph(comm_3)
+# Run Louvain on Community 3
+partition_comm_3 = community_louvain.best_partition(comm_3_g, random_state=42, resolution = 1.2)
+# Get genres for each sub_community of Community 3 
+sub_comm_3_genres = defaultdict(list)
+for genre, subcomm3_id in partition_comm_3.items():
+    sub_comm_3_genres[subcomm3_id].append(genre)
+# Print
+for subcomm3_id, genre in sub_comm_3_genres.items():
+    print(f"Sub-community {subcomm3_id} of Community 3 has {len(genre)} genres: {genre}")
+```
+## Combine 2 partition into a df
+```{python}
+df_partition = pd.DataFrame(list(partition.items()), columns=["Genre", "Global Community"])
+df_partition_comm_3 = pd.DataFrame(list(partition_comm_3.items()), columns=["Genre","Sub-Community"])
+df_community = pd.merge(df_partition, df_partition_comm_3, on="Genre", how = "left")
+```
+
+## Visualize 
+### Sunburst map 
+```{python}
+# Prepare the DataFrame for sunburst visualization
+df_community['Global Community'] = df_community['Global Community'].astype(str)
+df_community['Sub-Community'] = df_community['Sub-Community'].fillna('None').astype(str)
+# Create the sunburst
+fig = px.sunburst(
+    df_community, 
+    path=['Global Community', 'Sub-Community', 'Genre'], 
+    values=[1] * len(df_community),  # Each genre has equal "weight" 
+    title="Sunburst Chart of Global and Local Communities of Music Genres",
+    color_discrete_sequence=px.colors.qualitative.Bold
+)
+# Customize
+fig.update_layout(
+    height = 1000,
+    width = 1500,
+    title_font=dict(size = 30, color = "darkblue", family = "sans-serif")
+)
+fig.update_traces(
+    textfont_size = 20,
+    marker = dict(line = dict(width=2, color = "black"))
+)
+
+# Show plot
+fig.show()
+```
+
+
+## Runs check on 'Singer & Song Writer'
+```{python}
+# Check if 'Singer & Songwriter' is a "bridge" genre
+betweenness_centrality = nx.betweenness_centrality(gg_w, weight='weight', normalized=True)
+# Identify the betweenness of the specific genre
+ss = 'Singer & Songwriter' 
+ss_centrality = betweenness_centrality.get(ss, None)
+print(f"Betweenness centrality of '{ss}': {ss_centrality}")
+# Sort genres by betweenness centrality (highest first)
+sorted_betweenness = sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)
+# Print the top 15 genres with the highest betweenness centrality
+print("Top 15 Genres with highest betweenness centrality:")
+for i, (genre, centrality) in enumerate(sorted_betweenness[:15]):
+    print(f"{i+1}. Genre: {genre}, Betweenness Centrality: {centrality:.4f}")
+```
+```{python}
+# Check if 'Singer & Songwriter' is having low node degree
+# Calculate degree and weighted degree of the node
+degree = gg_w.degree(ss)
+weighted_degree = sum(data['weight'] for _, _, data in gg_w.edges(ss, data=True))
+print(f"Degree of '{ss}': {degree}")
+print(f"Weighted degree of '{ss}': {weighted_degree}")
+
+```
+```{python}
+# Get all edge weights for this genre
+edge_weights = [data['weight'] for _, _, data in gg_w.edges("Singer & Songwriter", data=True)]
+print(f"Edge weights for 'Singer & Songwriter':", edge_weights)
+```
+
+
+## Community analysis
+```{python}
+# Community similarity measurement
+community_similarity = {}
+for community_id, genres in community_genres.items():
+    subgraph = gg_w.subgraph(genres)  # Subgraph for this community
+    density = nx.density(subgraph)  # Density of the community
+    weighted_degree = sum(data['weight'] for _, _, data in subgraph.edges(data=True)) # Sum of edge weights
+    num_edges = subgraph.number_of_edges()
+    avg_edge_weight = weighted_degree / num_edges if num_edges > 0 else 0
+
+    community_similarity[community_id] = {
+        'num_genres': len(genres),
+        'density': density,
+        'avg_edge_weight': avg_edge_weight,
+        'central_genre': max(nx.degree(subgraph), key=lambda x: x[1])[0]  # Genre with highest degree
+    }
+# Display the similarity results
+for community_id, metrics in community_similarity.items():
+    print(f"Community {community_id}: {metrics}")
+```
+
+
+# Friendship analysis
+## Friendship network
+```{python}
+# Create friendship networkX
+fr_n = nx.from_pandas_edgelist(fr, source='node_1', target='node_2')
+```
+
+## Explore Degree Distribution
+```{python}
+fr_g = nx.from_pandas_edgelist(fr, source='node_1', target='node_2')
+# Node degree
+dd = Counter(dict(fr_g.degree()).values())
+# Visualize Degree Distribution
+fig = plt.figure(figsize=(4, 3))
+ax = fig.add_subplot(111)
+ax.scatter(dd.keys(), dd.values(), color="limegreen", alpha=0.15)
+ax.set_xlabel("Degree")
+ax.set_ylabel("Counts of nodes")
+ax.grid(True, ls="--")
+plt.show()
+```
+
+## Run Louvain's on Friendship network 
+```{python}
+# Louvain algorithmm on fr_n
+partition_fr = community_louvain.best_partition(fr_n, random_state=42, resolution=1)
+```
+
+## Extract community information
+```{python}
+# Get genres of each community
+community_friends = defaultdict(list)
+for user, community_id in partition_fr.items():
+    community_friends[community_id].append(user)
+# Print out the genres in each community
+for community_id, user in community_friends.items():
+    print(f"Community {community_id} has {len(user)} users")
+```
+
+## Extract community metrics
+```{python}
+# NOTE: This part is removed due to long processing time.
+# NOTE: The result of this code was exported to a csv file attached to this package
+# Initialize a list to store the community metrics
+#community_metrics = []
+# Get the metrics 
+#for community_id, members in community_friends.items():
+#    subgraph = fr_n.subgraph(members)
+#    # Community size
+#    size = subgraph.number_of_nodes()
+#    # Density
+#    density = nx.density(subgraph)
+#    # Clustering coefficient
+#    clustering_coefficient = nx.clustering(subgraph)
+#    avg_clustering = np.mean(list(clustering_coefficient.values()))
+#    #Betweenness Centrality (average)
+#    betweenness_centrality = nx.betweenness_centrality(subgraph)
+#    avg_betweenness = np.mean(list(betweenness_centrality.values()))
+#    #. Internal vs External Edges
+#    internal_edges = subgraph.number_of_edges()
+#    external_edges = sum(1 for edge in fr_n.edges(members) if edge[0] not in members or #edge[1] not in members)
+#    internal_external_ratio = internal_edges / (external_edges + 1e-6)  # Avoid division by zero
+    #  10. Save all the metrics for this community
+#    community_metrics.append({
+#        'Community_ID': community_id,
+#        'Size': size,
+#        'Density': density,
+#        'Avg_Clustering': avg_clustering,
+#        'Avg_Betweenness': avg_betweenness,
+#        'Internal/External_Ratio': internal_external_ratio,
+#    })
+```
+
+## Save as csv for easier implementation
+```{python}
+#Convert into df
+#df_metrics = pd.DataFrame(community_metrics)
+#df_metrics.to_csv('metrics_df.csv', index=False)
+```
+
+## Load csv in for Visualization
+```{python}
+df = pd.read_csv('metrics_df.csv')
+```
+
+
+## Visualize community metrics
+### Size vs Clustering Coefficients
+```{python}
+# Sort the DataFrame by size in descending order
+sorted_metrics_df = df.sort_values(by='Size', ascending=False)
+
+# Extract the sorted columns
+sorted_community_ids = sorted_metrics_df['Community_ID']
+sorted_sizes = sorted_metrics_df['Size']
+sorted_clustering_coefficients = sorted_metrics_df['Avg_Clustering']
+
+# Create the bar chart for community sizes 
+fig, ax1 = plt.subplots(figsize=(12, 6))
+
+# Plot bar chart for size
+bars = ax1.bar(range(len(sorted_community_ids)), sorted_sizes, color='lightblue', label='Community Size')
+
+# Set labels and title
+ax1.set_xlabel('Community ID')
+ax1.set_ylabel('Size', color='blue')
+ax1.set_title('Community Sizes and Clustering Coefficients (Sorted by Size)')
+
+# Set x-axis tick labels as Community IDs
+ax1.set_xticks(range(len(sorted_community_ids)))
+ax1.set_xticklabels(sorted_community_ids, rotation=90, fontsize=8)
+
+# Create a second y-axis to plot clustering coefficient
+ax2 = ax1.twinx()
+ax2.plot(range(len(sorted_community_ids)), sorted_clustering_coefficients, color='green', marker='o', linestyle='None', label='Clustering Coefficient')
+
+# Set the second y-axis label
+ax2.set_ylabel('Clustering Coefficient', color='green')
+
+# Display the plot
+plt.show()
+
+```
+
+## Size vs IER
+```{python}
+# Sort the DataFrame by size in descending order
+sorted_metrics_df = df.sort_values(by='Size', ascending=False)
+
+# Extract the sorted columns
+sorted_community_ids = sorted_metrics_df['Community_ID']
+sorted_sizes = sorted_metrics_df['Size']
+sorted_clustering_coefficients = sorted_metrics_df['Avg_Clustering']
+sorted_avg_betweeness = sorted_metrics_df['Avg_Betweenness']
+sorted_ratio = sorted_metrics_df['Internal/External_Ratio']
+
+# Create the bar chart for community sizes 
+fig, ax1 = plt.subplots(figsize=(14, 9))
+
+# Plot bar chart for size
+bars = ax1.bar(range(len(sorted_community_ids)), sorted_sizes, color='lightblue', label='Community Size')
+
+# Set labels and title
+ax1.set_xlabel('Community ID', fontsize = 18)
+ax1.set_ylabel('Size', color='blue', fontsize = 18)
+ax1.set_title('Community by Sizes and Internal/External Ratio', fontsize = 18)
+
+# Set x-axis tick labels as Community IDs
+ax1.set_xticks(range(len(sorted_community_ids)))
+ax1.set_xticklabels(sorted_community_ids, rotation=90, fontsize=8)
+
+# Create a second y-axis to plot I/E
+ax2 = ax1.twinx()
+ax2.plot(range(len(sorted_community_ids)), sorted_ratio, color='red', marker='o', linestyle='None', label='Internal/External_Ratio')
+
+# Set the second y-axis label
+ax2.set_ylabel('Internal/External_Ratio', color='red', fontsize = 18)
+
+plt.savefig('community_sizes_and_IER.png')
+# Display the plot
+plt.show()
+
+
+```
