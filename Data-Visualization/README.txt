@@ -1,0 +1,1 @@
+This module equipped me with skills and methodology in data visualisation, from data preprocessing techniques to layers of design principles. Geo-spatial and time-series data visulatisation were also taught and practiced thoroughly. 
