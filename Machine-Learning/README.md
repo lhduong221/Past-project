@@ -9,6 +9,11 @@
 
 ## Projects
 <ins> ***Project 1*** <ins>
-- 
+- Buid a diagnosis model to separate **malignant** from **benign** tumor
+- Focusing on identifying **malignant** tumor
+
 <ins> ***Project 2*** <ins>
+- Running through all different models to find the best performing one
+- Leanrt how different models is suited for different classification tasks
+
 <ins> ***Project 3*** <ins>
