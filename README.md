@@ -1,5 +1,5 @@
-<h1>Welcome to my repository!</h1> 
-This is where I keep all my past project I've done with documentation for each of them. 
+<h1>Welcome to my Bayes project repository!</h1> 
+This is where I keep all projects I've done during my time at Bayes Business School. 
 
 Language involved:
 - Python
@@ -14,5 +14,5 @@ Core Skills:
 - Data Visualisation
 - Network Analytics
 - Machine Learning Modeling
-- Natural Language Processing (NLP)
+- Natural Language Processing
 - Neural Network Modeling
